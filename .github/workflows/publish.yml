@@ -1,0 +1,54 @@
+name: AsanWay Instagram Publisher
+
+on:
+  schedule:
+    - cron: "30 8 * * *"     # 12:00 Tehran
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "test = بررسی تنظیمات / publish = انتشار"
+        required: true
+        default: "publish"
+        type: choice
+        options:
+          - publish
+          - test
+
+permissions:
+  contents: write
+
+concurrency:
+  group: asanway-ig
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Publish next post
+        if: ${{ github.event.inputs.mode != 'test' }}
+        env:
+          IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}
+        run: python scripts/publish.py
+
+      - name: Check secrets (test mode)
+        if: ${{ github.event.inputs.mode == 'test' }}
+        run: |
+          if [ -n "${{ secrets.IG_ACCESS_TOKEN }}" ] && [ -n "${{ secrets.IG_USER_ID }}" ]; then
+            echo "سکرت‌ها تنظیم شده‌اند. آماده انتشار است." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "سکرت‌ها تنظیم نشده‌اند: IG_ACCESS_TOKEN و IG_USER_ID" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Commit rotation state
+        if: always()
+        continue-on-error: true
+        run: |
+          git config user.name "asanway-bot"
+          git config user.email "bot@asanway.local"
+          git add state/state.json
+          git diff --cached --quiet || (git commit -m "rotation [skip ci]" && git push)
